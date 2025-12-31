@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { ThumbnailData } from '../types';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, Trash2, Maximize2 } from 'lucide-react';
 
 interface ThumbnailPreviewProps {
   data: ThumbnailData;
@@ -8,6 +8,9 @@ interface ThumbnailPreviewProps {
   onSelect: () => void;
   onUpdate: (updates: Partial<ThumbnailData>) => void;
   onDownload: () => void;
+  onDelete: () => void;
+  onOpenUploadModal: () => void;
+  onMaximize: () => void;
 }
 
 const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({ 
@@ -15,7 +18,10 @@ const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
   isSelected, 
   onSelect,
   onUpdate,
-  onDownload
+  onDownload,
+  onDelete,
+  onOpenUploadModal,
+  onMaximize
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -53,13 +59,40 @@ const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
         <span className="text-xs font-mono text-gray-400 truncate max-w-[200px]" title={data.fileName}>
           {data.fileName || 'Sem nome'}
         </span>
-        <button 
-          onClick={(e) => { e.stopPropagation(); onDownload(); }}
-          className="p-1 hover:bg-gray-700 rounded text-gray-300 hover:text-white transition"
-          title="Baixar JPG"
-        >
-          <Download size={16} />
-        </button>
+        <div className="flex gap-1">
+          <button 
+            onClick={(e) => { 
+                e.preventDefault();
+                e.stopPropagation(); 
+                onOpenUploadModal(); 
+            }}
+            className="p-1 hover:bg-gray-700 rounded text-gray-300 hover:text-white transition"
+            title="Trocar Imagem (Upload)"
+          >
+            <Upload size={16} />
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="p-1 hover:bg-red-900/50 rounded text-gray-500 hover:text-red-500 transition"
+            title="Excluir"
+          >
+            <Trash2 size={16} />
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onDownload(); }}
+            className="p-1 hover:bg-gray-700 rounded text-gray-300 hover:text-white transition"
+            title="Baixar JPG"
+          >
+            <Download size={16} />
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onMaximize(); }}
+            className="p-1 hover:bg-gray-700 rounded text-gray-300 hover:text-white transition"
+            title="Expandir"
+          >
+            <Maximize2 size={16} />
+          </button>
+        </div>
       </div>
 
       {/* The "Canvas" DOM Representation */}
@@ -72,16 +105,13 @@ const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
       >
         {/* Background Layer */}
         {data.bgImage ? (
-          <div 
-            className="absolute inset-0 w-full h-full"
+          <img 
+            src={data.bgImage}
+            alt="Background"
+            className="absolute inset-0 w-full h-full object-cover"
             style={{
-               backgroundImage: `url(${data.bgImage})`,
-               backgroundSize: 'cover', // We simulate 'cover' logic in styles, but actual positioning is simpler with transform
-               backgroundPosition: 'center',
-               // Using transform to simulate the exact control we have in canvas
-               // However, for CSS preview, let's try to match the canvas logic visually
-               transform: `scale(${data.bgZoom})`,
-               transformOrigin: `${data.bgPos.x}% ${data.bgPos.y}%`,
+               objectPosition: 'center', 
+               transform: `translate(${data.bgPos.x - 50}%, ${data.bgPos.y - 50}%) scale(${data.bgZoom})`,
                filter: `brightness(${data.brightness}%) saturate(${data.saturation}%)`
             }}
           />
@@ -113,9 +143,15 @@ const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
               fontWeight: 900,
               whiteSpace: 'pre-wrap', // Allows wrapping
               wordWrap: 'break-word',
-              WebkitTextStroke: textStroke,
-              paintOrder: 'stroke fill', // Ensures stroke doesn't eat the fill
+              
+              // Advanced Styles
+              textShadow: data.textShadowBlur ? `${data.textShadowOffsetX || 0}px ${data.textShadowOffsetY || 0}px ${data.textShadowBlur}px ${data.textShadowColor}` : 'none',
+              WebkitTextStroke: data.textStrokeWidth ? `${data.textStrokeWidth}px ${data.textStrokeColor}` : 'none',
+              paintOrder: 'stroke fill',
+              
               width: '100%',
+              fontFamily: 'Inter, sans-serif',
+              letterSpacing: '-0.02em',
             }}
           >
             {data.title.toUpperCase()}
@@ -132,7 +168,7 @@ const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
               left: `${data.logoPos.x}%`,
               top: `${data.logoPos.y}%`,
               height: `${data.logoSize}%`,
-              // We rely on natural aspect ratio for width
+              transform: 'translate(-50%, -50%)'
             }}
           />
         )}

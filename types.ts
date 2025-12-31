@@ -21,6 +21,14 @@ export interface ThumbnailData {
   fontSize: number;
   textWidth: number; // Largura máxima do texto em %
   
+  // Advanced Text Styles
+  textStrokeWidth?: number;
+  textStrokeColor?: string;
+  textShadowBlur?: number;
+  textShadowColor?: string;
+  textShadowOffsetX?: number;
+  textShadowOffsetY?: number;
+  
   // Logo
   logoImage: string | null;
   logoPos: Position;
@@ -46,6 +54,14 @@ export const DEFAULT_THUMBNAIL: Omit<ThumbnailData, 'id'> = {
   textAlign: 'center',
   fontSize: 80, // Fonte maior para impacto
   textWidth: 90, // 90% da largura
+  
+  // Default Advanced Styles
+  textStrokeWidth: 0,
+  textStrokeColor: '#000000',
+  textShadowBlur: 0,
+  textShadowColor: '#000000',
+  textShadowOffsetX: 0,
+  textShadowOffsetY: 0,
   
   logoImage: null,
   logoPos: { x: 4, y: 4 }, // Canto superior esquerdo com margem pequena

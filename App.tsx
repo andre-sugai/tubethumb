@@ -3,16 +3,37 @@ import { ThumbnailData, DEFAULT_THUMBNAIL, Preset } from './types';
 import EditorControls from './components/EditorControls';
 import ThumbnailPreview from './components/ThumbnailPreview';
 import { generateThumbnailBlob } from './utils/canvasGenerator';
-import { Grid, Layers, Download, Plus, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
+import OrganicBackground from './components/OrganicBackground';
+import ImageUploadModal from './components/ImageUploadModal';
+import FullScreenViewer from './components/FullScreenViewer';
+import { Grid, Layers, Download, Plus, Trash2, Upload, Image as ImageIcon, ArrowLeftRight, PanelRightClose, PanelRightOpen, Sidebar } from 'lucide-react';
 
 function App() {
-  const [mode, setMode] = useState<'setup' | 'editor'>('setup');
-  const [countInput, setCountInput] = useState<number>(3);
+  const [mode, setMode] = useState<'setup' | 'editor'>('editor');
   
-  const [thumbnails, setThumbnails] = useState<ThumbnailData[]>([]);
+  // Initialize with 3 default thumbnails
+  const [thumbnails, setThumbnails] = useState<ThumbnailData[]>(() => {
+    return Array.from({ length: 3 }).map((_, i) => ({
+      ...DEFAULT_THUMBNAIL,
+      id: crypto.randomUUID(),
+      title: `TÍTULO DO VÍDEO ${i + 1}`,
+      fileName: `thumbnail-${i + 1}`,
+    }));
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Effect to ensure selection on mount
+  useEffect(() => {
+    if (thumbnails.length > 0 && !selectedId) {
+        setSelectedId(thumbnails[0].id);
+    }
+  }, [thumbnails, selectedId]);
   
   const [isApplyToAll, setIsApplyToAll] = useState<boolean>(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
+  const [viewingIndex, setViewingIndex] = useState<number | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
 
   // Load presets from storage on mount
@@ -58,6 +79,14 @@ function App() {
     alert(`Preset "${name}" salvo com sucesso!`);
   };
 
+  const deletePreset = (index: number) => {
+    if (window.confirm("Tem certeza que deseja excluir este preset?")) {
+      const updated = presets.filter((_, i) => i !== index);
+      setPresets(updated);
+      localStorage.setItem('tubeThumbPresets', JSON.stringify(updated));
+    }
+  };
+
   const loadPreset = (preset: Preset) => {
     if (!selectedId && !isApplyToAll && thumbnails.length > 0) {
       // Se não houver ID mas houver thumbnails, seleciona a primeira
@@ -79,23 +108,52 @@ function App() {
     }
   };
 
-  // Setup Generator
-  const generateThumbnails = () => {
-    const newThumbs: ThumbnailData[] = Array.from({ length: countInput }).map((_, i) => ({
-      ...DEFAULT_THUMBNAIL,
-      id: crypto.randomUUID(),
-      title: `TÍTULO DO VÍDEO ${i + 1}`,
-      fileName: `thumbnail-${i + 1}`,
-    }));
-    setThumbnails(newThumbs);
-    if (newThumbs.length > 0) setSelectedId(newThumbs[0].id);
-    setMode('editor');
+  // Helper to add more thumbnails
+  const handleAddThumbnail = () => {
+      const newThumb = {
+        ...DEFAULT_THUMBNAIL,
+        id: crypto.randomUUID(),
+        title: `NOVO VÍDEO`,
+        fileName: `thumbnail-${thumbnails.length + 1}`,
+      };
+      setThumbnails(prev => [...prev, newThumb]);
+      setSelectedId(newThumb.id);
+  };
+
+  const handleApplyToAll = () => {
+    const current = thumbnails.find(t => t.id === selectedId);
+    if (!current) return;
+    
+    // Extract style data, preserving unique content per thumbnail
+    const { id, bgImage, title, fileName, ...styleData } = current;
+    
+    setThumbnails(prev => prev.map(t => t.id === id ? t : { ...t, ...styleData }));
+    alert("Estilo aplicado a todas as thumbnails!");
   };
 
   const handleBulkUpload = (files: FileList | null, append: boolean = false) => {
     if (!files || files.length === 0) return;
     
     const fileArray = Array.from(files);
+    
+    // If we have a target ID, we are replacing the background of a specific thumbnail
+    if (uploadTargetId) {
+       const file = fileArray[0];
+       if (!file) return;
+       
+       const reader = new FileReader();
+       reader.onload = (e) => {
+          if (e.target?.result) {
+            setThumbnails(prev => prev.map(t => t.id === uploadTargetId ? { ...t, bgImage: e.target?.result as string } : t));
+            setSelectedId(uploadTargetId);
+            setUploadTargetId(null); // Reset target
+          }
+       };
+       reader.readAsDataURL(file);
+       return;
+    }
+
+    // Otherwise, bulk add new thumbnails
     const readers = fileArray.map((file) => {
       return new Promise<ThumbnailData>((resolve) => {
         const reader = new FileReader();
@@ -141,6 +199,18 @@ function App() {
     }
   };
 
+  const handleDeleteThumbnail = (id: string) => {
+    if (window.confirm("Tem certeza que deseja excluir esta thumbnail?")) {
+      setThumbnails(prev => {
+        const newThumbs = prev.filter(t => t.id !== id);
+        if (selectedId === id) {
+           setSelectedId(newThumbs.length > 0 ? newThumbs[0].id : null);
+        }
+        return newThumbs;
+      });
+    }
+  };
+
   const handleDownloadSingle = async (data: ThumbnailData) => {
     const blob = await generateThumbnailBlob(data);
     if (blob) {
@@ -160,111 +230,72 @@ function App() {
     }
   };
 
-  // Render Setup Screen
-  if (mode === 'setup') {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-black/80 backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-900/50">
-              <Layers size={32} className="text-white" />
-            </div>
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">TubeThumb Criador em Massa</h1>
-          <p className="text-gray-400 mb-8">Crie thumbnails consistentes e de alta qualidade em massa.</p>
-          
-          <div className="space-y-8">
-            <div className="group relative">
-               <input 
-                  type="file" 
-                  multiple 
-                  accept="image/*"
-                  onChange={(e) => handleBulkUpload(e.target.files, false)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-               />
-               <div className="border-2 border-dashed border-white/10 group-hover:border-blue-500 group-hover:bg-blue-900/30 rounded-xl p-8 transition-all duration-300">
-                  <div className="flex flex-col items-center gap-3">
-                     <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center text-blue-500 group-hover:scale-110 transition">
-                        <Upload size={24} />
-                     </div>
-                     <div>
-                       <h3 className="text-lg font-semibold text-white group-hover:text-blue-400">Enviar Imagens</h3>
-                       <p className="text-sm text-gray-500">Selecione as fotos dos seus vídeos</p>
-                     </div>
-                  </div>
-               </div>
-            </div>
 
-            <div className="relative flex items-center justify-center">
-               <hr className="w-full border-white/5" />
-               <span className="absolute bg-black px-3 text-xs text-gray-500 uppercase tracking-widest backdrop-blur-md">OU</span>
-            </div>
-
-            <div className="bg-gray-900/60 p-4 rounded-xl border border-white/5">
-               <label className="block text-sm font-medium text-gray-400 mb-3">
-                 Quantidade de modelos
-               </label>
-               <div className="flex items-center gap-3 justify-center">
-                  <button onClick={() => setCountInput(Math.max(1, countInput - 1))} className="p-3 bg-gray-800 rounded-lg hover:bg-gray-700 text-white transition"><Trash2 size={18}/></button>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max="50"
-                    value={countInput}
-                    onChange={(e) => setCountInput(parseInt(e.target.value) || 1)}
-                    className="w-24 text-center bg-black border border-white/10 rounded-lg py-2 text-xl font-bold text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                  <button onClick={() => setCountInput(countInput + 1)} className="p-3 bg-gray-800 rounded-lg hover:bg-gray-700 text-white transition"><Plus size={18}/></button>
-                  
-                  <button 
-                    onClick={generateThumbnails}
-                    className="ml-4 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg transition transform active:scale-95 flex items-center gap-2"
-                  >
-                    Gerar <Grid size={18} />
-                  </button>
-               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const selectedThumb = thumbnails.find(t => t.id === selectedId) || thumbnails[0];
 
   return (
-    <div className="h-screen flex flex-col bg-transparent overflow-hidden">
-      <header className="h-16 bg-black/80 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-6 shrink-0 z-20">
-        <div className="flex items-center gap-2">
-          <Layers className="text-blue-500" />
-          <span className="font-bold text-lg tracking-tight text-white">TubeThumb</span>
-        </div>
-        
-        <div className="flex items-center gap-4">
-           <div className="text-sm text-gray-400">
-             {thumbnails.length} Itens
+    <div className="h-screen flex flex-col bg-transparent overflow-hidden relative">
+      <OrganicBackground />
+      <div className="relative z-10 flex flex-col h-full w-full">
+        {/* Header */}
+        <header className="flex justify-between items-center p-4 bg-gray-900/80 backdrop-blur-md border-b border-gray-800">
+           <div className="flex items-center gap-3">
+             <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-900/20">
+               <Layers className="text-white" size={24} />
+             </div>
+             <div>
+               <h1 className="text-xl font-bold text-white tracking-tight">TubeThumb</h1>
+               <p className="text-[10px] text-gray-400 font-medium">CRIADOR EM MASSA</p>
+             </div>
            </div>
            
-           <button 
-             onClick={() => setMode('setup')}
-             className="px-4 py-2 text-sm text-gray-400 hover:text-white transition"
-           >
-             Reiniciar
-           </button>
-
-           <button 
-             onClick={handleDownloadAll}
-             className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg shadow-green-900/20 transition active:scale-95"
-           >
-             <Download size={16} /> Baixar Todas
-           </button>
-        </div>
-      </header>
+           <div className="flex gap-3">
+              <button onClick={handleAddThumbnail} className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg border border-gray-700 transition">
+                <Plus size={18} />
+                <span className="hidden sm:inline">Adicionar</span>
+              </button>
+              <button 
+                onClick={() => {
+                  setUploadTargetId(null);
+                  setIsUploadModalOpen(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg border border-gray-700 transition"
+              >
+                <Upload size={18} />
+                <span className="hidden sm:inline">Upload</span>
+              </button>
+              <button 
+                onClick={handleApplyToAll}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-900/30 hover:bg-blue-900/50 text-blue-300 border border-blue-800 rounded-lg transition"
+                title="Aplicar estilo da selecionada para todas"
+              >
+                <ArrowLeftRight size={18} />
+                <span className="hidden sm:inline">Sincronizar Estilos</span>
+              </button>
+              <button 
+                onClick={handleDownloadAll}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg shadow-lg shadow-green-900/20 transition font-medium"
+              >
+                <Download size={18} />
+              </button>
+              
+              <div className="h-6 w-px bg-gray-700 mx-1"></div>
+              
+              <button 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className={`p-2 rounded-lg border transition ${isSidebarOpen ? 'bg-blue-600 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'}`}
+                title={isSidebarOpen ? "Fechar Editor" : "Abrir Editor"}
+              >
+                {isSidebarOpen ? <PanelRightOpen size={18} /> : <PanelRightClose size={18} />}
+              </button>
+           </div>
+        </header>
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-8">
-            {thumbnails.map(thumb => (
+            {thumbnails.map((thumb, index) => (
               <ThumbnailPreview 
                 key={thumb.id}
                 data={thumb}
@@ -275,34 +306,56 @@ function App() {
                   setThumbnails(prev => prev.map(t => t.id === thumb.id ? { ...t, ...updates } : t));
                 }}
                 onDownload={() => handleDownloadSingle(thumb)}
+                onDelete={() => handleDeleteThumbnail(thumb.id)}
+                onOpenUploadModal={() => {
+                  setUploadTargetId(thumb.id);
+                  setIsUploadModalOpen(true);
+                }}
+                onMaximize={() => setViewingIndex(index)}
               />
             ))}
             
-            <div className="relative group cursor-pointer aspect-video border-2 border-dashed border-white/10 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:text-blue-500 hover:border-blue-500 hover:bg-black/40 transition gap-2 overflow-hidden bg-black/20 backdrop-blur-sm">
-              <input 
-                  type="file" 
-                  multiple 
-                  accept="image/*"
-                  onChange={(e) => handleBulkUpload(e.target.files, true)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
+            <div 
+              onClick={handleAddThumbnail}
+              className="relative group cursor-pointer aspect-video border-2 border-dashed border-white/10 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:text-blue-500 hover:border-blue-500 hover:bg-black/40 transition gap-2 overflow-hidden bg-black/20 backdrop-blur-sm"
+            >
               <Plus size={32} />
               <span className="font-medium text-sm">Adicionar Mais</span>
             </div>
           </div>
         </div>
 
-        {selectedThumb && (
+        {selectedThumb && isSidebarOpen && (
           <EditorControls 
             data={selectedThumb}
             onUpdate={handleUpdate}
             presets={presets}
             onSavePreset={savePreset}
             onLoadPreset={loadPreset}
+            onDeletePreset={deletePreset}
             isApplyToAll={isApplyToAll}
             onToggleApplyToAll={() => setIsApplyToAll(!isApplyToAll)}
           />
         )}
+      </div>
+      
+      <ImageUploadModal 
+        isOpen={isUploadModalOpen}
+        onClose={() => {
+           setIsUploadModalOpen(false);
+           setUploadTargetId(null);
+        }}
+        onUpload={(files) => handleBulkUpload(files, true)}
+      />
+
+      {viewingIndex !== null && (
+        <FullScreenViewer
+          thumbnails={thumbnails}
+          initialIndex={viewingIndex}
+          onClose={() => setViewingIndex(null)}
+        />
+      )}
+
       </div>
     </div>
   );
