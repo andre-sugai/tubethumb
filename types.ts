@@ -33,6 +33,9 @@ export interface ThumbnailData {
   logoImage: string | null;
   logoPos: Position;
   logoSize: number;
+  
+  // Tag
+  tag: string;
 }
 
 export interface Preset {
@@ -66,4 +69,7 @@ export const DEFAULT_THUMBNAIL: Omit<ThumbnailData, 'id'> = {
   logoImage: null,
   logoPos: { x: 4, y: 4 }, // Canto superior esquerdo com margem pequena
   logoSize: 20,
+  
+  // Tag
+  tag: "",
 };

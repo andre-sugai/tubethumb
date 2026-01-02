@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { ThumbnailData } from '../types';
-import { Download, Upload, Trash2, Maximize2 } from 'lucide-react';
+import { Download, Upload, Trash2, Maximize2, Tag } from 'lucide-react';
 
 interface ThumbnailPreviewProps {
   data: ThumbnailData;
@@ -71,6 +71,18 @@ const ThumbnailPreview: React.FC<ThumbnailPreviewProps> = ({
           >
             <Upload size={16} />
           </button>
+          
+          <div className="relative group/tag" onClick={e => e.stopPropagation()}>
+             <Tag size={16} className={`absolute left-2 top-1/2 -translate-y-1/2 ${data.tag ? 'text-blue-400' : 'text-gray-500'}`} />
+             <input 
+               type="text"
+               value={data.tag || ''}
+               onChange={(e) => onUpdate({ tag: e.target.value })}
+               placeholder="Tag..."
+               className="bg-gray-800 border border-gray-700 rounded pl-7 pr-2 py-1 text-xs text-white w-20 focus:w-32 transition-all outline-none focus:border-blue-500"
+             />
+          </div>
+
           <button 
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="p-1 hover:bg-red-900/50 rounded text-gray-500 hover:text-red-500 transition"
