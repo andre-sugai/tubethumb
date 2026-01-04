@@ -31,19 +31,35 @@ export const generateThumbnailBlob = async (data: ThumbnailData): Promise<Blob |
     try {
       const img = await loadImage(data.bgImage);
       
-      // Calculate scaling to cover
-      const scale = Math.max(WIDTH / img.width, HEIGHT / img.height) * data.bgZoom;
-      const scaledWidth = img.width * scale;
-      const scaledHeight = img.height * scale;
-
-      // Position logic: data.bgPos is percentage (0-100)
-      // Center point calculation
-      const x = (WIDTH - scaledWidth) * (data.bgPos.x / 100);
-      const y = (HEIGHT - scaledHeight) * (data.bgPos.y / 100);
+      // CSS transform order: translate(x%, y%) scale(zoom)
+      // This means: translate is applied to ORIGINAL size, then scale is applied
+      
+      // Step 1: Calculate base scale to cover (without zoom)
+      const baseScale = Math.max(WIDTH / img.width, HEIGHT / img.height);
+      const baseWidth = img.width * baseScale;
+      const baseHeight = img.height * baseScale;
+      
+      // Step 2: Apply translation on the base (unzoomed) dimensions
+      // This matches CSS translate(x-50%, y-50%) which operates on original element size
+      const baseCenterX = (WIDTH - baseWidth) / 2;
+      const baseCenterY = (HEIGHT - baseHeight) / 2;
+      const translateX = (baseWidth * (data.bgPos.x - 50) / 100);
+      const translateY = (baseHeight * (data.bgPos.y - 50) / 100);
+      
+      // Step 3: Apply zoom to get final dimensions
+      const finalScale = baseScale * data.bgZoom;
+      const finalWidth = img.width * finalScale;
+      const finalHeight = img.height * finalScale;
+      
+      // Step 4: Calculate final position
+      // The zoom scales from the center, so we need to adjust position accordingly
+      const zoomOffset = (data.bgZoom - 1) / 2;
+      const x = baseCenterX + translateX - (baseWidth * zoomOffset);
+      const y = baseCenterY + translateY - (baseHeight * zoomOffset);
 
       // Apply filters
       ctx.filter = `brightness(${data.brightness}%) saturate(${data.saturation}%)`;
-      ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+      ctx.drawImage(img, x, y, finalWidth, finalHeight);
       ctx.filter = 'none'; // Reset filter
     } catch (e) {
       console.error("Failed to load background image", e);
@@ -60,8 +76,9 @@ export const generateThumbnailBlob = async (data: ThumbnailData): Promise<Blob |
       const aspectRatio = logo.width / logo.height;
       const logoWidth = logoHeight * aspectRatio;
 
-      const lx = (WIDTH * data.logoPos.x) / 100;
-      const ly = (HEIGHT * data.logoPos.y) / 100;
+      // Center logo on the position point (matching preview transform: translate(-50%, -50%))
+      const lx = (WIDTH * data.logoPos.x) / 100 - (logoWidth / 2);
+      const ly = (HEIGHT * data.logoPos.y) / 100 - (logoHeight / 2);
 
       // Add a subtle drop shadow to logo for separation
       ctx.shadowColor = 'rgba(0,0,0,0.5)';
@@ -83,29 +100,12 @@ export const generateThumbnailBlob = async (data: ThumbnailData): Promise<Blob |
 
   // 4. Draw Text
   if (data.title) {
-    // Basic Text Config
-    ctx.fillStyle = data.titleColor;
-    ctx.textAlign = data.textAlign;
-    ctx.textBaseline = 'middle';
-    
-    // Font setup
+    // Font setup first (needed for measurements)
     // Multiplicador ajustado para a nova resolução de 1080p
-    // Anteriormente era 1.5 para 720p. 
-    // 1080p é 1.5x maior que 720p, então 1.5 * 1.5 = 2.25
     const scaledFontSize = data.fontSize * 2.25; 
     ctx.font = `900 ${scaledFontSize}px Inter, Roboto, sans-serif`;
     
-    // Stroke Setup (Outline)
-    // Reduzimos ligeiramente a proporção do stroke para ficar mais nítido em alta resolução
-    ctx.lineWidth = scaledFontSize * 0.15; 
-    ctx.strokeStyle = 'black';
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
-
-    const tx = (WIDTH * data.titlePos.x) / 100;
-    const ty = (HEIGHT * data.titlePos.y) / 100;
-
-    // Calculate Max Width based on percentage (uses new WIDTH)
+    // Calculate Max Width based on percentage
     const maxTextWidth = (WIDTH * (data.textWidth || 90)) / 100;
 
     // Process Text Wrapping
@@ -129,17 +129,54 @@ export const generateThumbnailBlob = async (data: ThumbnailData): Promise<Blob |
       finalLines.push(currentLine);
     });
 
+    // Calculate text container dimensions
     const lineHeight = scaledFontSize * 1.1;
     const totalHeight = finalLines.length * lineHeight;
     
-    // Adjust start Y to center the block of text around the point
-    let currentY = ty - (totalHeight / 2) + (lineHeight / 2);
-
+    // Find the widest line to determine container width
+    let maxLineWidth = 0;
+    finalLines.forEach(line => {
+      const lineWidth = ctx.measureText(line).width;
+      if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+    });
+    
+    // Position of the text container center point (matching preview's titlePos)
+    const containerCenterX = (WIDTH * data.titlePos.x) / 100;
+    const containerCenterY = (HEIGHT * data.titlePos.y) / 100;
+    
+    // Calculate container bounds (matching preview's transform: translate(-50%, -50%))
+    // The container width is maxTextWidth, centered at containerCenterX
+    const containerLeft = containerCenterX - (maxTextWidth / 2);
+    const containerTop = containerCenterY - (totalHeight / 2);
+    
+    // Calculate text X position based on alignment within the container
+    let textX: number;
+    if (data.textAlign === 'left') {
+      textX = containerLeft;
+    } else if (data.textAlign === 'right') {
+      textX = containerLeft + maxTextWidth;
+    } else { // center
+      textX = containerCenterX;
+    }
+    
+    // Text rendering config
+    ctx.fillStyle = data.titleColor;
+    ctx.textAlign = data.textAlign;
+    ctx.textBaseline = 'middle';
+    
+    // Stroke Setup (Outline)
+    ctx.lineWidth = scaledFontSize * 0.15; 
+    ctx.strokeStyle = 'black';
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+    
+    // Draw each line
+    let currentY = containerTop + (lineHeight / 2);
     finalLines.forEach(line => {
       // Draw Stroke first
-      ctx.strokeText(line, tx, currentY);
+      ctx.strokeText(line, textX, currentY);
       // Draw Fill on top
-      ctx.fillText(line, tx, currentY);
+      ctx.fillText(line, textX, currentY);
       currentY += lineHeight;
     });
   }

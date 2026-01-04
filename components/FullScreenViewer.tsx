@@ -1,6 +1,6 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { ThumbnailData } from '../types';
-import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
 import { generateThumbnailBlob } from '../utils/canvasGenerator';
 
 interface FullScreenViewerProps {
@@ -14,7 +14,9 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
   initialIndex,
   onClose
 }) => {
-  const [currentIndex, setCurrentIndex] = React.useState(initialIndex);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const data = thumbnails[currentIndex];
 
   const handleNext = useCallback(() => {
@@ -36,6 +38,39 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
       URL.revokeObjectURL(url);
     }
   };
+
+  // Generate canvas preview when index changes
+  useEffect(() => {
+    let isMounted = true;
+    
+    const generatePreview = async () => {
+      setIsLoading(true);
+      
+      try {
+        const blob = await generateThumbnailBlob(data);
+        if (blob && isMounted) {
+          const url = URL.createObjectURL(blob);
+          setPreviewUrl(url);
+        }
+      } catch (error) {
+        console.error('Failed to generate preview:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    generatePreview();
+
+    // Cleanup: revoke old blob URL when component unmounts or index changes
+    return () => {
+      isMounted = false;
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [currentIndex, data]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -102,76 +137,28 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
            </button>
         </div>
 
-        {/* Canvas - Scaled Up */}
+        {/* Canvas-Generated Preview */}
         <div 
              onClick={(e) => e.stopPropagation()}
-             className="relative aspect-video w-full max-w-5xl bg-black shadow-2xl overflow-hidden select-none"
+             className="relative aspect-video w-full max-w-5xl bg-black shadow-2xl overflow-hidden select-none flex items-center justify-center"
              style={{ maxHeight: '80vh' }}
         >
-                {/* Background Layer */}
-                {data.bgImage && (
-                  <img 
-                    src={data.bgImage}
-                    alt="Background"
-                    className="absolute inset-0 w-full h-full object-cover"
-                    style={{
-                       objectPosition: 'center', 
-                       transform: `translate(${data.bgPos.x - 50}%, ${data.bgPos.y - 50}%) scale(${data.bgZoom})`,
-                       filter: `brightness(${data.brightness}%) saturate(${data.saturation}%)`
-                    }}
-                  />
-                )}
-        
-                {/* Text Layer - Scaled for View */}
-                <div 
-                  className="absolute pointer-events-none flex flex-col"
-                  style={{
-                    top: `${data.titlePos.y}%`,
-                    left: `${data.titlePos.x}%`,
-                    width: `${data.textWidth || 90}%`,
-                    transform: 'translate(-50%, -50%)',
-                    alignItems: data.textAlign === 'left' ? 'flex-start' : data.textAlign === 'right' ? 'flex-end' : 'center',
-                  }}
-                >
-                  <h1 
-                    style={{
-                      color: data.titleColor,
-                      textAlign: data.textAlign,
-                      // We use relative units (vw) or large pixel values for the preview. 
-                      // Since this container changes size, let's stick to the ratio approach used in ThumbnailPreview but simpler scale.
-                      fontSize: `clamp(20px, ${data.fontSize / 1.5}px, 10vw)`, 
-                      lineHeight: 1.1,
-                      fontWeight: 900,
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word',
-                      
-                      textShadow: data.textShadowBlur ? `${data.textShadowOffsetX || 0}px ${data.textShadowOffsetY || 0}px ${data.textShadowBlur}px ${data.textShadowColor}` : 'none',
-                      WebkitTextStroke: data.textStrokeWidth ? `${data.textStrokeWidth}px ${data.textStrokeColor}` : 'none',
-                      paintOrder: 'stroke fill',
-                      
-                      width: '100%',
-                      fontFamily: 'Inter, sans-serif',
-                      letterSpacing: '-0.02em',
-                    }}
-                  >
-                    {data.title.toUpperCase()}
-                  </h1>
-                </div>
-        
-                {/* Logo Layer */}
-                {data.logoImage && (
-                  <img 
-                    src={data.logoImage}
-                    alt="Logo"
-                    className="absolute object-contain pointer-events-none drop-shadow-md"
-                    style={{
-                      left: `${data.logoPos.x}%`,
-                      top: `${data.logoPos.y}%`,
-                      height: `${data.logoSize}%`,
-                      transform: 'translate(-50%, -50%)'
-                    }}
-                  />
-                )}
+          {isLoading ? (
+            <div className="flex flex-col items-center gap-4 text-white/60">
+              <Loader2 size={48} className="animate-spin" />
+              <span className="text-sm">Gerando preview...</span>
+            </div>
+          ) : previewUrl ? (
+            <img 
+              src={previewUrl}
+              alt="Preview"
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <div className="text-white/60 text-sm">
+              Erro ao gerar preview
+            </div>
+          )}
         </div>
     </div>
   );
